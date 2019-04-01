@@ -7,7 +7,7 @@ import {
   TouchableHighlight,
   PermissionsAndroid
 } from 'react-native';
-import GoogleSignIn from 'react-native-google-sign-in';
+import GoogleSignIn from 'react-native-google-signin';
 import GDrive from "react-native-google-drive-api-wrapper";
 import RNFS from "react-native-fs"
 
@@ -49,43 +49,6 @@ export const setApiToken = (token) => {
   apiToken = token
 }
 
-/**
- * crete multi body
- */
-function createMultipartBody(body, isUpdate = false) {
-  // https://developers.google.com/drive/v3/web/multipart-upload defines the structure
-  const metaData = {
-    name: 'data.json',
-    description: 'Backup data for my app',
-    mimeType: 'application/json',
-  }
-  // if it already exists, specifying parents again throws an error
-  if (!isUpdate) metaData.parents = ['appDataFolder']
-
-  // request body
-  const multipartBody = `\r\n--${boundaryString}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`
-    + `${JSON.stringify(metaData)}\r\n`
-    + `--${boundaryString}\r\nContent-Type: application/json\r\n\r\n`
-    + `${JSON.stringify(body)}\r\n`
-    + `--${boundaryString}--`
-
-  return multipartBody
-}
-
-
-/**
- * configure post method
- */
-function configurePostOptions(bodyLength, isUpdate = false) {
-  const headers = new Headers()
-  headers.append('Authorization', `Bearer ${apiToken}`)
-  headers.append('Content-Type', `multipart/related; boundary=${boundaryString}`)
-  headers.append('Content-Length', bodyLength)
-  return {
-    method: isUpdate ? 'PATCH' : 'POST',
-    headers,
-  }
-}
 
 /**
  * configure post method for FOLDER
@@ -208,18 +171,77 @@ export const getFilesList = () => {
     })
 }
 
+export const gDriveUpload = (content) => {
+  GDrive.setAccessToken(apiToken);
+  GDrive.init();
+  if (GDrive.isInitialized() ) {
+    GDrive.files.createFileMultipart(
+        content,
+        'application/vnd.ms-excel',
+        {name: 'TestSheet.xml'}
+    ).then( res=> console.log('gDriveUpload', res))
+  }else {
+    console.log('gDrive error - not initialized')
+  }
+}
+
+/**
+ * crete multi body
+ */
+function createMultipartBody(body, isUpdate = false) {
+  // https://developers.google.com/drive/v3/web/multipart-upload defines the structure
+  const metaData = {
+    name: 'Answers.excel',
+    description: 'Answers to questions',
+    mimeType: 'application/vnd.google-apps.spreadsheet',
+  }
+  // if it already exists, specifying parents again throws an error
+  // if (!isUpdate) metaData.parents = ['appDataFolder']
+
+  // request body
+  const multipartBody = `\r\n--${boundaryString}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`
+      + `${JSON.stringify(metaData)}\r\n`
+      + `--${boundaryString}\r\nContent-Type: text/csv\r\n\r\n`
+      + `${body}\r\n`
+      + `--${boundaryString}--`
+
+  return multipartBody
+}
+
+/**
+ * configure post method
+ */
+function configurePostOptions(bodyLength, isUpdate = false) {
+  const headers = new Headers()
+  headers.append('Authorization', `Bearer ${apiToken}`)
+  headers.append('Content-Type', `multipart/related; boundary=${boundaryString}`)
+  headers.append('Content-Length', bodyLength)
+  return {
+    method: 'POST',
+    headers,
+  }
+}
+
+
 /**
  * upload file to google drive
  */
-export const uploadFile = (content, existingFileId) => {
+export const uploadFile2 = (content, existingFileId) => {
   const body = createMultipartBody(content, !!existingFileId)
   const options = configurePostOptions(body.length, !!existingFileId)
-  return fetch(`${uploadUrl}/files${existingFileId ? `/${existingFileId}` : ''}?uploadType=multipart`, {
+
+
+  console.log('uploadFile2 header', options)
+  console.log('uploadFile2 body', body)
+  console.log('uploadFile2 url', `${uploadUrl}/files?uploadType=multipart`)
+  return fetch(`${uploadUrl}/files?uploadType=multipart`, {
     ...options,
     body,
   })
-    .then(parseAndHandleErrors)
+      .then(parseAndHandleErrors)
 }
+
+
 
 /**
  * handle error

@@ -11,16 +11,18 @@ import {
   TextInput,
   TouchableHighlight,
   ActivityIndicator,
-  PermissionsAndroid
+  PermissionsAndroid, Dimensions
 } from 'react-native';
 import {requestReadStoragePermission, requestWriteStoragePermission,
   getFilesList, getFileById, getFolders, getFolderItems, setApiToken, createFolder,
   downloadFile
 } from '../../Func';
-import GoogleSignIn from 'react-native-google-sign-in';
-import GDrive from "react-native-google-drive-api-wrapper";
+import {GoogleSignin} from 'react-native-google-signin';
 import RNFS from "react-native-fs"
 import XLSX from 'xlsx';
+import {Button} from 'react-native-elements';
+let {width, height} = Dimensions.get('window');
+
 const downloadHeaderPath = RNFS.DocumentDirectoryPath + '/data.xml' // see more path directory https://github.com/itinance/react-native-fs#api
 
 
@@ -34,7 +36,9 @@ export default class MainScreen extends Component {
       files: null,
       A_Q: null,
       Items: null,
-      apiToken: null
+      apiToken: null,
+      isLoading: false,
+      isLoadingFile: false
     }
 
     this.checkPermission()
@@ -42,24 +46,39 @@ export default class MainScreen extends Component {
 
   // check storage permission
   checkPermission = () => {
-    PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE).then((writeGranted) => {
-      console.log('writeGranted', writeGranted)
-      if (!writeGranted) {
-        requestWriteStoragePermission()
-      }
-      PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE).then((readGranted) => {
-        console.log('readGranted', readGranted)
-        if (!readGranted) {
-          requestReadStoragePermission()
-        }
-        this.initialGoogle()
-      })
-    })
+    this.initialGoogle()
+  }
+
+  initialGoogle = async () => {
+    try {
+      await GoogleSignin.hasPlayServices();
+      await GoogleSignin.configure({
+        webClientId: '1076060332370-flkb82nvs0rjg7pgbtf2soc86k4lkf6k.apps.googleusercontent.com',
+        iosClientId: '1076060332370-n7komarcfqedc61rig3arsalthp1kquq.apps.googleusercontent.com',
+        scopes: [
+          'https://www.googleapis.com/auth/drive',
+          'https://www.googleapis.com/auth/drive.appdata',
+          'https://www.googleapis.com/auth/drive.file'],
+        shouldFetchBasicProfile: true,
+        offlineAccess: true
+      });
+
+      const user = await GoogleSignin.signIn();
+      //set api token
+      console.log('initialGoogle', user);
+      this.setState({ apiToken: user.accessToken})
+      setApiToken(user.accessToken)
+    } catch (e) {
+      console.log('config ERROR', e)
+    }
   }
 
   // download and read file to get data content in downloaded file
   downloadAndReadFile = (file) => {
 
+    this.setState({
+      isLoadingFile: true
+    })
     const fromUrl = downloadFile(file.id)
     let downloadFileOptions = {
       fromUrl: fromUrl,
@@ -72,8 +91,9 @@ export default class MainScreen extends Component {
       return RNFS.readFile(downloadHeaderPath, 'ascii');
     }).then(content => {
       const workbook = XLSX.read(content, {type:'binary'});
-      console.log('file content after reading',file.name,  workbook);
-
+      this.setState({
+        isLoadingFile: false
+      })
       if (file.name[0] == '@') {
         let shedule=[];
         for (let label in workbook.Sheets.Sheet1) {
@@ -105,12 +125,27 @@ export default class MainScreen extends Component {
         };
         let items = [];
         for (let label in workbook.Sheets.Sheet1) {
+          let obj = {};
           if (label == 'A1') {
             props.title = workbook.Sheets.Sheet1[label].v;
           } else {
-            if (label[1] > 2) {
+            if (label[1] > 1) {
+              // if (label[0] == 'A') {
+              //   items.push(workbook.Sheets.Sheet1[label].v)
+              // }
               if (label[0] == 'A') {
-                items.push(workbook.Sheets.Sheet1[label].v)
+                obj.equipmentName = workbook.Sheets.Sheet1[label].w
+                items[label[1]] = obj;
+              } else if (label[0] == 'B') {
+                items[label[1]].manufacturer = workbook.Sheets.Sheet1[label].w;
+              } else if (label[0] == 'C') {
+                items[label[1]].model = workbook.Sheets.Sheet1[label].w
+              } else if (label[0] == 'D') {
+                items[label[1]].serial = workbook.Sheets.Sheet1[label].w
+              } else if (label[0] == 'E') {
+                items[label[1]].physicalLocation = workbook.Sheets.Sheet1[label].w
+              } else if (label[0] == 'F') {
+                items[label[1]].servicesLocation = workbook.Sheets.Sheet1[label].w
               }
             }
           }
@@ -122,22 +157,32 @@ export default class MainScreen extends Component {
         });
       } else {
         let QuestionsArray = [];
-        let AnswearsArray = [];
         for (let label in workbook.Sheets.Sheet1) {
           if (label[1] > 2) {
             if (label[0] == 'A') {
-              QuestionsArray[label[1]] = workbook.Sheets.Sheet1[label].v
-            }
-            if (label[0] == 'B') {
-              AnswearsArray[label[1]] = workbook.Sheets.Sheet1[label].v
+              QuestionsArray[label[1]] = {
+                question: workbook.Sheets.Sheet1[label].v,
+                type: workbook.Sheets.Sheet1['B'+label[1]].v,
+              }
+              if (QuestionsArray[label[1]].type == 'L') {
+                QuestionsArray[label[1]].list = [
+                  {value: workbook.Sheets.Sheet1['C'+label[1]].v},
+                  {value: workbook.Sheets.Sheet1['D'+label[1]].v},
+                  ]
+                if (workbook.Sheets.Sheet1.hasOwnProperty('E'+label[1])) {
+                  QuestionsArray[label[1]].list.push({ value: workbook.Sheets.Sheet1['E'+label[1]].v})
+                }
+                if (workbook.Sheets.Sheet1.hasOwnProperty('F'+label[1])) {
+                  QuestionsArray[label[1]].list.push({ value: workbook.Sheets.Sheet1['F'+label[1]].v})
+                }
+              }
             }
           }
         }
 
         this.props.navigation.push("Quotation", {
           data: {
-            questions: QuestionsArray,
-            answearsTypes: AnswearsArray
+            questions: QuestionsArray
           },
           token: this.state.apiToken
         });
@@ -148,15 +193,21 @@ export default class MainScreen extends Component {
   }
 
   checkFolders = () => {
+    this.setState({
+      isLoading: true
+    })
     getFolders().then( folders => {
-      console.log('folderSSSSS', folders)
       this.setState({
-        folders
+        folders,
+        isLoading: false
       })
     });
   }
 
   checkFolderItems = (folder) => {
+    this.setState({
+      isLoading: true
+    })
     getFolderItems(folder.id).then((file) => {
       console.log('checkFile file', file)
       let files = file.filter(item => {
@@ -169,7 +220,8 @@ export default class MainScreen extends Component {
       })
       console.log('files', files);
       this.setState({
-        files: files
+        files: files,
+        isLoading: false
       })
     }).catch((error) => {
       console.log('error', error)
@@ -181,23 +233,6 @@ export default class MainScreen extends Component {
     createFolder()
   }
 
-  initialGoogle = async () => {
-    await GoogleSignIn.configure({
-      scopes: [
-        'https://www.googleapis.com/auth/drive',
-        'https://www.googleapis.com/auth/drive.appdata',
-        'https://www.googleapis.com/auth/drive.file'],
-      shouldFetchBasicProfile: true,
-      offlineAccess: true
-    });
-
-    const user = await GoogleSignIn.signInPromise();
-    //set api token
-    console.log('initialGoogle', user);
-    this.setState({ apiToken: user.accessToken})
-    setApiToken(user.accessToken)
-  }
-
   renderFolders = () => {
     if (this.state.apiToken == null) {
       return (
@@ -206,11 +241,13 @@ export default class MainScreen extends Component {
     }
     if (this.state.folders == null) {
       return (
-        <TouchableHighlight style={styles.buttonGetData} onPress={this.checkFolders}>
-          <Text style={styles.text}>
-            Get data from Drive
-          </Text>
-        </TouchableHighlight>
+          <Button
+              title="Get data from Drive"
+              type="outline"
+              onPress={this.checkFolders}
+              disabled={this.state.isLoading}
+              loading={this.state.isLoading}
+          />
       )
     }
     let buttonsArray=[];
@@ -219,13 +256,14 @@ export default class MainScreen extends Component {
       console.log('this state', this.state);
       this.state.folders.forEach( item => {
         buttonsArray.push(
-          <TouchableHighlight
-            key={item.name}
-            style={styles.buttonGetData} onPress={() => this.checkFolderItems(item)}>
-            <Text style={styles.text}>
-              Get files from folder {item.name}
-            </Text>
-          </TouchableHighlight>
+            <Button
+                key={item.name}
+              title={`Get files from folder ${item.name}` }
+              type="outline"
+              onPress={() => this.checkFolderItems(item)}
+              disabled={this.state.isLoading}
+              loading={this.state.isLoading}
+              />
         )
       })
     }
@@ -238,27 +276,58 @@ export default class MainScreen extends Component {
 
   renderFolderItems = () => {
     console.log('renderFolderItems', this.state);
+    if (this.state.isLoadingFile) {
+      return (
+          <View style={{
+            width: width,
+            height: height,
+            justifyContent: 'center',
+            alignItems: 'center'
+          }}>
+            <ActivityIndicator size={'large'}/>
+          </View>
+      )
+    }
     if (this.state.folders && this.state.files) {
       let buttonsArray=[];
       this.state.files.forEach( item => {
         buttonsArray.push(
-          <TouchableHighlight
-            key={item.name}
-            style={styles.buttonGetData} onPress={() => this.downloadAndReadFile(item)}>
-            <Text style={styles.text}>
-              Get file {item.name}
-            </Text>
-          </TouchableHighlight>
+            <View style={{
+              width: width*0.8,
+              height: 80,
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}>
+              <Button
+                  style={{
+                    width: width*0.8
+                  }}
+                title={`Get file ${item.name}` }
+                type="outline"
+                onPress={() => this.downloadAndReadFile(item)}
+                disabled={this.state.isLoading}
+                loading={this.state.isLoading}
+              />
+            </View>
         )
       })
       return (
         <View>
-          <View>
+          <View style={{
+            width:'100%',
+            height: 80,
+            justifyContent: 'center',
+            alignItems: 'center'
+          }}>
             <Text>
               Files in folder:
             </Text>
           </View>
-            <View>
+            <View style={{
+              width: width * 0.8 ,
+              justifyContent: 'center',
+              alignItems: 'flex-start'
+            }}>
               {buttonsArray}
             </View>
         </View>
@@ -282,7 +351,8 @@ export default class MainScreen extends Component {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    width,
+    height,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#F5FCFF',

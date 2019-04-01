@@ -16,8 +16,8 @@ import {requestReadStoragePermission, requestWriteStoragePermission,
   getFilesList, getFileById, getFolderItems, setApiToken, createFolder,
   downloadFile
 } from './src/Func';
-import GoogleSignIn from 'react-native-google-sign-in';
-import GDrive from "react-native-google-drive-api-wrapper";
+// import GoogleSignIn from 'react-native-google-sign-in';
+// import GDrive from "react-native-google-drive-api-wrapper";
 import RNFS from "react-native-fs"
 import XLSX from 'xlsx';
 const downloadHeaderPath = RNFS.DocumentDirectoryPath + '/data.xml' // see more path directory https://github.com/itinance/react-native-fs#api

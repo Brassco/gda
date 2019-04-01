@@ -14,12 +14,14 @@ import {
   TouchableHighlight,
   TouchableOpacity,
   PermissionsAndroid,
-  ScrollView
+  ScrollView, Dimensions
 } from 'react-native';
 import RNFS from "react-native-fs"
 import XLSX from 'xlsx';
-const downloadHeaderPath = RNFS.DocumentDirectoryPath + '/data.xml' // see more path directory https://github.com/itinance/react-native-fs#api
+import {Button, Input, ListItem } from "react-native-elements";
 
+let {width, height} = Dimensions.get('window');
+const downloadHeaderPath = RNFS.DocumentDirectoryPath + '/data.xml' // see more path directory https://github.com/itinance/react-native-fs#api
 
 export default class Equipment extends Component {
 
@@ -30,43 +32,46 @@ export default class Equipment extends Component {
       searched: '',
       searchResult: null,
       data: null,
-      apiToken: null
+      apiToken: null,
+      expanded: null,
+      isSearching: false
     }
   }
 
   search = (searchedString) => {
     if (this.state.searched.length < 2) {
-      console.log('set all list', this.state);
+console.log('set all list', this.state);
       this.setState({
+        isSearching: true,
         searchResult: this.state.data.items,
       })
     } else {
       let result = [];
-      for(let key in this.state.data.sheet) {
+      for(let key in this.state.data.items) {
         if (key[0] == '!' || key == 'A1') continue
         let searchedString = this.state.searched.toString().toLowerCase();
-        let searchIn = this.state.data.sheet[key].v.toString().toLowerCase();
-        if (searchIn.indexOf(searchedString) >= 0) {
-          result.push(this.state.data.sheet[key].v)
+        let searchIn = this.state.data.items[key];
+        for(let key in searchIn) {
+          if (searchIn[key].toString().toLowerCase().indexOf(searchedString) >= 0) {
+            result.push(searchIn)
+          }
         }
       }
-      console.log('search result', result);
       this.setState({
         searched: '',
+        isSearching: false,
         searchResult: result
       });
     }
   }
 
   onTextChange = (text) => {
-    console.log('onTextChange', text)
     this.setState({
       searched: text
     })
   }
 
   renderRows = () => {
-    console.log('render Equipment Rows', this.state)
     if (this.state.data) {
       return (
         <View
@@ -74,10 +79,8 @@ export default class Equipment extends Component {
         >
           <View style={{
             width: '100%',
-            height: 50,
+            height: 0,
             marginHorizontal: 10,
-            // borderWidth: 1,
-            // borderColor: '#111'
           }}>
             <Text>
               {this.state.data.title}
@@ -97,17 +100,71 @@ export default class Equipment extends Component {
     }
   }
 
+  renderAdditionInfo = (obj) => {
+    console.log('renderAdditionInfo', obj)
+    let result = [];
+    for (let key in obj) {
+      result.push(
+      <View style={{
+        flexDirection: 'row',
+            justifyContent: 'space-around',
+            alignItems: 'center'
+      }}>
+      <View style={{
+        flex: 1,
+        justifyContent: 'center',
+            alignItems: 'flex-start',
+            paddingLeft: 10
+      }}>
+        <Text style={{
+          color: 'black',
+              fontSize: 18,
+            fontWeight: '500'
+      }}>
+          {key}
+        </Text>
+      </View>
+      <View style={{
+        flex: 1,
+        justifyContent: 'center',
+            alignItems: 'flex-start',
+            paddingLeft: 10
+      }}>
+        <Text>
+          {obj[key]}
+        </Text>
+      </View>
+      </View>
+      )
+    }
+    return (
+        <View style={{
+          width: '100%',
+              height: 200,
+        }}>
+        {result}
+        </View>
+    )
+}
+
   renderItems(items) {
     return items.map( item => {
       return (
-        <View
-          key={item.name}
-          style={
-          styles.itemContainer
-        }>
-          <Text>
-            {item}
-          </Text>
+        <View>
+          <ListItem
+              chevronColor={'#345'}
+              onPress={() => {
+                this.setState({
+                  expanded: this.state.expanded == item.equipmentName ? null : item.equipmentName
+                })
+              }}
+              title={item.equipmentName}
+          />
+  {console.log(this.state.expanded, item.equipmentName, this.state.expanded == item.equipmentName)}
+  {
+    this.state.expanded == item.equipmentName &&
+        this.renderAdditionInfo(item)
+  }
         </View>
       )
     })
@@ -163,14 +220,14 @@ export default class Equipment extends Component {
         </View>
         <View style={{
           flexDirection:'row',
-          height: 50,
+          height: 80,
           width: '100%',
           marginBottom: 20
         }}>
           <View style={{
             flex:1,
           }}>
-            <TextInput
+            <Input
               value={this.state.searched}
               onChangeText={this.onTextChange}
               placeholder={'Search'}
@@ -179,13 +236,16 @@ export default class Equipment extends Component {
           <View style={{
             flex:1
           }}>
-            <TouchableHighlight
-              style={styles.buttonGetData}
-              onPress={this.search}>
-              <Text style={styles.text}>
-                Search Equipment
-              </Text>
-            </TouchableHighlight>
+            <Button
+                style={{
+                  width: '100%'
+                }}
+                title={`Search Equipment` }
+                type="outline"
+                onPress={this.search}
+                disabled={this.state.isSearching}
+                loading={this.state.isSearching}
+            />
           </View>
         </View>
         <View style={{
